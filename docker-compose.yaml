@@ -1,0 +1,89 @@
+version: '3.8'
+
+networks:
+  ai_network:
+    driver: bridge
+
+volumes:
+  pg_data:
+
+services:
+  # 1. База Данных
+  postgres:
+    image: postgres:15-alpine
+    container_name: ai_postgres
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: aiAsyncSystem
+    ports:
+      - "5433:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    networks:
+      - ai_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d aiAsyncSystem"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # 2. Очередь (RabbitMQ)
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: ai_rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    networks:
+      - ai_network
+    healthcheck:
+      test: rabbitmq-diagnostics -q ping
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # 3. Go Gateway
+  gateway:
+    build: ./apiGateway
+    container_name: ai_gateway
+    ports:
+      - "8080:8080"
+    networks:
+      - ai_network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    restart: on-failure
+
+    environment:
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+
+  # 4. Python Worker
+  worker:
+    build: ./ai_worker
+    container_name: ai_worker
+    networks:
+      - ai_network
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    restart: on-failure
+
+    environment:
+      HF_TOKEN: ${HF_TOKEN}
+      MODEL_URL: "https://router.huggingface.co/hf-inference/models/stabilityai/stable-diffusion-xl-base-1.0"
+
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+
+    volumes:
+      - ./images:/app/images
