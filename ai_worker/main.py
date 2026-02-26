@@ -1,42 +1,41 @@
-import os
-import time
-import json
 import pika
 import psycopg2
+import os
+import json
 import requests
-
-HF_TOKEN = os.getenv("HF_TOKEN")
-MODEL_URL = os.getenv("MODEL_URL")
-HEADERS = {"Authorization": f"Bearer {HF_TOKEN}"}
+from PIL import Image
+from io import BytesIO
 
 DB_USER = os.getenv("DB_USER")
 DB_PASSWORD = os.getenv("DB_PASSWORD")
+HF_TOKEN = os.getenv("HF_TOKEN")
 
 OUTPUT_DIR = "/app/images"
 if not os.path.exists(OUTPUT_DIR):
     os.makedirs(OUTPUT_DIR)
 
-# Функция генерации
+API_URL = "https://router.huggingface.co/hf-inference/models/stabilityai/stable-diffusion-xl-base-1.0"
+headers = {"Authorization": f"Bearer {HF_TOKEN}"}
+
 def generate_image(prompt, task_id):
+    print(f"Начинаю генерацию для задачи {task_id}: {prompt}")
+    try:
+        response = requests.post(API_URL, headers=headers, json={"inputs": prompt})
 
-    print(f" [AI] Рисую: {prompt}...")
+        if response.status_code != 200:
+            print(f"Ошибка API: {response.text}")
+            return False
 
-    payload = {"inputs": prompt}
+        image = Image.open(BytesIO(response.content))
+        image_path = f"/app/images/{task_id}.png"
+        image.save(image_path)
 
-    response = requests.post(MODEL_URL, headers=HEADERS, json=payload)
+        print(f"Задача {task_id} успешно завершена!")
+        return True
 
-    if response.status_code != 200:
-        print(f" [AI] Ошибка API: {response.text}")
-        return None
-
-    file_name = f"{task_id}.png"
-    file_path = os.path.join(OUTPUT_DIR, file_name)
-
-    with open(file_path, "wb") as f:
-        f.write(response.content)
-
-    print(f" [AI] Картинка сохранена: {file_path}")
-    return file_name
+    except Exception as e:
+        print(f"Критическая ошибка при генерации: {e}")
+        return False
 
 # Функция для работы с БД
 def update_task_status(task_id, status):

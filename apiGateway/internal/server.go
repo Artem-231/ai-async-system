@@ -49,8 +49,10 @@ func HandleTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	response := map[string]int{"id": id}
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("Task sent successfully!"))
+	json.NewEncoder(w).Encode(response)
 	log.Printf(" [x] Sent request: %s", req.Action)
 }
 

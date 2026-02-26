@@ -60,7 +60,6 @@ services:
       rabbitmq:
         condition: service_healthy
     restart: on-failure
-
     environment:
       DB_USER: ${DB_USER}
       DB_PASSWORD: ${DB_PASSWORD}
@@ -77,13 +76,23 @@ services:
       postgres:
         condition: service_healthy
     restart: on-failure
-
     environment:
       HF_TOKEN: ${HF_TOKEN}
-      MODEL_URL: "https://router.huggingface.co/hf-inference/models/stabilityai/stable-diffusion-xl-base-1.0"
-
       DB_USER: ${DB_USER}
       DB_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - ./images:/app/images
 
+  # 5. Telegram Bot
+  tg_bot:
+    build: ./telegram_bot
+    container_name: ai_tg_bot
+    networks:
+      - ai_network
+    depends_on:
+      - gateway
+    restart: on-failure
+    environment:
+      TG_TOKEN: ${TG_TOKEN}
     volumes:
       - ./images:/app/images
