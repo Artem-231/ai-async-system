@@ -1,14 +1,22 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/Artem-231/ai-async-system/gateway/internal"
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
 func main() {
+	internal.InitDB()
+	defer internal.DB.Close()
+
 	conn, err := amqp.Dial("amqp://guest:guest@rabbitmq:5672/")
 	failOnError(err, "Failed to connect to RabbitMQ")
 	defer conn.Close()
@@ -22,12 +30,36 @@ func main() {
 	)
 	failOnError(err, "Failed to declare a queue")
 
-	http.HandleFunc("/task", internal.HandleTask)
-	http.HandleFunc("/status", internal.HandleStatus)
+	mux := http.NewServeMux()
+	mux.HandleFunc("/task", internal.HandleTask)
+	mux.HandleFunc("/status", internal.HandleStatus)
 
-	log.Printf("Gateway is running on http://localhost:8080")
+	srv := &http.Server{
+		Addr:    ":8080",
+		Handler: mux,
+	}
 
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	go func() {
+		log.Printf("Gateway is running on http://localhost:8080")
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("listen: %s\n", err)
+		}
+	}()
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+
+	log.Println("Получен сигнал на остановку. Завершаем работу Gateway...")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Fatal("Ошибка при остановке сервера:", err)
+	}
+
+	log.Println("Gateway успешно остановлен без потери данных")
 }
 
 // failOnError облегчает просмотр кода, благодаря вынесу вывода ошибка в отдельную функцию

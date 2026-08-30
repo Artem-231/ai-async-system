@@ -3,6 +3,7 @@ import psycopg2
 import os
 import json
 import requests
+import urllib.parse
 from PIL import Image
 from io import BytesIO
 
@@ -14,16 +15,20 @@ OUTPUT_DIR = "/app/images"
 if not os.path.exists(OUTPUT_DIR):
     os.makedirs(OUTPUT_DIR)
 
-API_URL = "https://router.huggingface.co/hf-inference/models/stabilityai/stable-diffusion-xl-base-1.0"
+API_URL = "https://api-inference.huggingface.co/models/runwayml/stable-diffusion-v1-5"
 headers = {"Authorization": f"Bearer {HF_TOKEN}"}
 
 def generate_image(prompt, task_id):
     print(f"Начинаю генерацию для задачи {task_id}: {prompt}")
     try:
-        response = requests.post(API_URL, headers=headers, json={"inputs": prompt})
+        encoded_prompt = urllib.parse.quote(prompt)
+
+        url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=1024&height=1024&nologo=true"
+
+        response = requests.get(url)
 
         if response.status_code != 200:
-            print(f"Ошибка API: {response.text}")
+            print(f"Ошибка API: {response.status_code}")
             return False
 
         image = Image.open(BytesIO(response.content))
